@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+  <head><title>Polite GET Requester</title></head>
+  <body>
+    <h1>Polite GET Requester</h1>
+    <form method="post">
+      URL (use {n} for numbering): <br>
+      <input type="text" name="url" size="60"><br><br>
+
+      Number of requests: <br>
+      <input type="number" name="total" value="10"><br><br>
+
+      Concurrency: <br>
+      <input type="number" name="concurrency" value="100"><br><br>
+
+      Delay per worker (seconds): <br>
+      <input type="text" name="delay" value="0.000001"><br><br>
+
+      <input type="submit" value="Start">
+    </form>
+  </body>
+</html>

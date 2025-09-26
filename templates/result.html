@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Results</title>
+  </head>
+  <body>
+    <h1>Results</h1>
+    <p>Total: {{ total }}, 200 OK: {{ ok }}, Errors: {{ errors }}</p>
+    <ul>
+    {% for r in results %}
+      <li>
+        {{ r.url }} →
+        {% if r.status %}
+          Status {{ r.status }} {% if r.get("len") %}(len={{ r.get("len") }}){% endif %}
+        {% else %}
+          Error: {{ r.error }}
+        {% endif %}
+      </li>
+    {% endfor %}
+    </ul>
+    <a href="/">Go back</a>
+  </body>
+</html>
