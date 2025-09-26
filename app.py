@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """
-app.py – Flask web-based polite GET requester (Render-safe version)
+interactive_polite_gets_web.py
+
+Flask web-based polite GET requester.
 """
 
 import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
-from flask import Flask, request, render_template
+from flask import Flask, request, render_template_string
 
 # ---- Configuration defaults ----
 DEFAULT_DELAY = 0.1
-DEFAULT_CONCURRENCY = 5
-DEFAULT_MAX_REQUESTS = 500  # capped for Render safety
+DEFAULT_CONCURRENCY = 1
+DEFAULT_MAX_REQUESTS = 1000   # keep small for Render
 USER_AGENT = "PoliteRequester/1.0 (+mailto:someone@gmail.com)"  # change email
 
 app = Flask(__name__)
@@ -24,7 +26,7 @@ def is_valid_url(u: str) -> bool:
     except Exception:
         return False
 
-def polite_get(session, url, timeout=10, max_retries=3):
+def polite_get(session, url, timeout=15, max_retries=3):
     backoff = 1.0
     for attempt in range(1, max_retries + 1):
         try:
@@ -55,30 +57,34 @@ def worker_task(session, template, n, delay):
 @app.route("/", methods=["GET", "POST"])
 def home():
     if request.method == "POST":
-        url = request.form["url"].strip()
+        url = request.form.get("url", "").strip()
+        if not url or not is_valid_url(url.replace("{n}", "1")):
+            return "❌ Invalid or missing URL"
+
         try:
-            total = int(request.form["total"])
-        except Exception:
-            return "❌ Invalid total"
+            total = int(request.form.get("total") or 1)
+        except:
+            total = 1
 
-        conc = int(request.form.get("concurrency", DEFAULT_CONCURRENCY))
-        delay = float(request.form.get("delay", DEFAULT_DELAY))
+        try:
+            conc = int(request.form.get("concurrency") or DEFAULT_CONCURRENCY)
+        except:
+            conc = DEFAULT_CONCURRENCY
 
-        if not is_valid_url(url.replace("{n}", "1")):
-            return "❌ Invalid URL"
+        try:
+            delay = float(request.form.get("delay") or DEFAULT_DELAY)
+        except:
+            delay = DEFAULT_DELAY
 
         if total > DEFAULT_MAX_REQUESTS:
             return f"❌ Too many requests (limit {DEFAULT_MAX_REQUESTS})"
-
-        if conc > DEFAULT_CONCURRENCY * 5:
-            return f"❌ Concurrency too high (limit {DEFAULT_CONCURRENCY * 5})"
 
         headers = {"User-Agent": USER_AGENT}
         session = requests.Session()
         session.headers.update(headers)
 
         results = []
-        with ThreadPoolExecutor(max_workers=conc) as ex:
+        with ThreadPoolExecutor(max_workers=min(conc, 5)) as ex:  # cap concurrency for Render
             futures = [ex.submit(worker_task, session, url, i, delay) for i in range(1, total + 1)]
             for f in as_completed(futures):
                 results.append(f.result())
@@ -86,9 +92,37 @@ def home():
         ok = sum(1 for r in results if r.get("status") == 200)
         errors = total - ok
 
-        return render_template("results.html", results=results, total=total, ok=ok, errors=errors)
+        return render_template_string("""
+        <h1>Results</h1>
+        <p>Total: {{total}}, 200 OK: {{ok}}, Errors: {{errors}}</p>
+        <ul>
+        {% for r in results %}
+          <li>
+            {{r.url}} →
+            {% if r.status %}
+              Status {{r.status}} {% if r.get("len") %}(len={{r.get("len")}}){% endif %}
+            {% else %}
+              Error: {{r.error}}
+            {% endif %}
+          </li>
+        {% endfor %}
+        </ul>
+        <a href="/">Go back</a>
+        """, results=results, total=total, ok=ok, errors=errors)
 
-    return render_template("home.html")
+    return """
+    <h1>Polite GET Requester</h1>
+    <form method="post">
+      URL (use {n} for numbering): <br><input type="text" name="url" size="60"><br><br>
+      Number of requests: <br><input type="number" name="total" value="1"><br><br>
+      Concurrency: <br><input type="number" name="concurrency" value="1"><br><br>
+      Delay per worker (seconds): <br><input type="text" name="delay" value="0.1"><br><br>
+      <input type="submit" value="Start">
+    </form>
+    """
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # On Render, Flask must listen on 0.0.0.0 and port from $PORT env var
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
